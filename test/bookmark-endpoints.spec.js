@@ -55,16 +55,16 @@ describe.only("Bookmark Endpoints", function () {
       return db.into("bookmarks").insert(bookmarksTest);
     });
 
-    it("GET /bookmarks responds with 200 and all of the bookmarks", () => {
-      return supertest(app).get("/bookmarks").expect(200, bookmarksTest);
+    it("GET /api/bookmarks responds with 200 and all of the bookmarks", () => {
+      return supertest(app).get("/api/bookmarks").expect(200, bookmarksTest);
     });
   });
   context(`Given no bookmarks in table `, () => {
     it(`GET responds with a 200 and an empty list`, () => {
-      return supertest(app).get("/bookmarks").expect(200, []);
+      return supertest(app).get("/api/bookmarks").expect(200, []);
     });
   });
-  describe(`Get /bookmarks/:bookmark_id`, () => {
+  describe(`Get /api/bookmarks/:bookmark_id`, () => {
     context(`Given no bookmark id`, () => {
       beforeEach("insert bookmark", () => {
         return db.into("bookmarks").insert(bookmarksTest);
@@ -72,14 +72,14 @@ describe.only("Bookmark Endpoints", function () {
       it(`GET responds with 404 not found`, () => {
         const bookmarkId = 7;
         return supertest(app)
-          .get(`/bookmarks/${bookmarkId}`)
+          .get(`/api/bookmarks/${bookmarkId}`)
           .expect(404, "Bookmark Not Found");
       });
-      it("GET /bookmarks/:bookmark_id responds with 200 and the specified bookmark", () => {
+      it("GET /api/bookmarks/:bookmark_id responds with 200 and the specified bookmark", () => {
         const bookmarkId = 1;
         const expectedId = bookmarksTest[bookmarkId - 1];
         return supertest(app)
-          .get(`/bookmarks/${bookmarkId}`)
+          .get(`/api/bookmarks/${bookmarkId}`)
           .expect(200, expectedId);
       });
     });
@@ -89,7 +89,7 @@ describe.only("Bookmark Endpoints", function () {
         title: 'Naughty naughty very naughty <script>alert("xss");</script>',
         url: "www.google.com",
         description: `Bad image <img src="https://url.to.file.which/does-not.exist" onerror="alert(document.cookie);">. But not <strong>all</strong> bad.`,
-        rating: 2
+        rating: 2,
       };
 
       beforeEach("insert malicious article", () => {
@@ -98,7 +98,7 @@ describe.only("Bookmark Endpoints", function () {
 
       it("removes XSS attack content", () => {
         return supertest(app)
-          .get(`/bookmarks/${maliciousBookmarks.id}`)
+          .get(`/api/bookmarks/${maliciousBookmarks.id}`)
           .expect(200)
           .expect((res) => {
             expect(res.body.title).to.eql(
@@ -113,7 +113,7 @@ describe.only("Bookmark Endpoints", function () {
   });
 
   //post
-  describe(`POST /bookmarks`, () => {
+  describe(`POST /api/bookmarks`, () => {
     it(`POST creates a bookmark, responding with 201 and a new bookmark`, function () {
       const newBookmark = {
         id: 7,
@@ -125,7 +125,7 @@ describe.only("Bookmark Endpoints", function () {
 
       return (
         supertest(app)
-          .post("/bookmarks")
+          .post("/api/bookmarks")
           .send(newBookmark)
           .expect(201)
           //check to make sure the bookmark is being created
@@ -140,7 +140,7 @@ describe.only("Bookmark Endpoints", function () {
           .then((postRes) =>
             //implicit return so mocha waits for both request to resolve
             supertest(app)
-              .get(`/bookmarks/${postRes.body.id}`)
+              .get(`/api/bookmarks/${postRes.body.id}`)
               .expect(postRes.body)
           )
       );
@@ -148,20 +148,89 @@ describe.only("Bookmark Endpoints", function () {
     it(`POST does not create when the required fields are not there`, () => {
       const newBookmark = {};
       return supertest(app)
-        .post("/bookmarks")
+        .post("/api/bookmarks")
         .send(newBookmark)
         .expect(400, "title, url, description, rating are required.");
     });
   });
-  describe(`DELETE /bookmarks/:bookmark_id`, ()=>{
-    context(`DELETE given that there are bookmarks in the database`,()=>{
-      it(`DELETE responds with 404 when the bookmark doesn't exist!`, ()=>{
-        const thirdId = 20;
+  describe(`DELETE /api/bookmarks/:bookmark_id`, () => {
+    context(`DELETE given that there are bookmarks in the database`, () => {
+      it(`DELETE responds with 404 when the bookmark doesn't exist!`, () => {
+        const thirdId = 2;
         return supertest(app)
-          .delete(`/bookmarks/${thirdId}`)
-          .expect(404, 'Bookmark does not exist');
+          .delete(`/api/bookmarks/${thirdId}`)
+          .expect(404, "Bookmark does not exist");
+      });
+    });
+  });
+  describe.only(`PATCH /api/bookmarks/:bookmark_id`, () => {
+    context(`Given no bookmarks`, () => {
+      it(`responds with 404`, () => {
+        const bookmarkId = 123456;
+        return supertest(app).patch(`/api/bookmarks/${bookmarkId}`).expect(404);
+      });
+    });
+    context(`Given there are bookmarks in the database`, () => {
+      beforeEach("insert bookmarks", () => {
+        return db.into("bookmarks").insert(bookmarksTest);
+      });
+      it("responds with 204 and updates the bookmark", (done) => {
+        const idToUpdate = 1;
+        const updateBookmark = {
+          id: 1,
+          title: "Knoppers",
+          url: "www.amazon.com",
+          description: "Knoppers is a tasty wafers snack covered in chocolate.",
+          rating: "4",
+        };
+        supertest(app)
+          .patch(`/api/bookmarks/${idToUpdate}`)
+          .send(updateBookmark)
+          .expect(204)
+          .then(() => {
+            //query the database to check if bookmark update is there
+            db.select("*")
+              .from("bookmarks")
+              .where("id", idToUpdate)
+              .first()
+              .then((results) => {
+                console.log(updateBookmark);
+                expect(updateBookmark).to.eql(results);
+                done();
+              })
+              .catch((err) => {
+                console.error(err);
+              });
+          });
+      });
+      it("PATCH responds with a 400 when no values are supplied for any fields(title, url, description, rating", () => {
+        const newBookmark = {};
+        const idToCheck = 1;
+        return supertest(app)
+          .patch(`/api/bookmarks/${idToCheck}`)
+          .send(newBookmark)
+          .expect(400, "title, url, description, rating are required.");
+      });
+      it("PATCH is able to update when there are only partial updates", () => {
+        const idToCheck = 2;
+        const newField = {
+          title: "Hanuta",
+        };
+        const expectedBookmark = {
+          ...bookmarksTest[idToCheck - 1],
+          ...newField,
+        };
+
+        return supertest(app)
+          .patch(`/api/bookmarks/${idToCheck}`)
+          .send(newField)
+          .expect(204)
+          .then((res) =>
+            supertest(app)
+              .get(`/api/bookmarks/${idToCheck}`)
+              .expect(expectedBookmark)
+          );
       });
     });
   });
 });
-
